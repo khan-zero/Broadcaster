@@ -28,11 +28,12 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 # --- Load Environment ---
-load_dotenv()
+env_path = os.path.join(sys._MEIPASS, '.env') if hasattr(sys, '_MEIPASS') else '.env'
+load_dotenv(env_path)
 
 # --- Configuration ---
-API_ID = os.getenv("TELEGRAM_API_ID")
-API_HASH = os.getenv("TELEGRAM_API_HASH")
+API_ID = os.getenv("TG_API_ID")
+API_HASH = os.getenv("TG_API_HASH")
 SESSIONS_DIR = "sessions"
 GROUPS_FILE = "groups.json"
 DRAFTS_FILE = "drafts.json"
@@ -309,7 +310,7 @@ class App(ctk.CTk):
         if not API_ID or not API_HASH:
             self.after(500, lambda: tkinter.messagebox.showerror(
                 "Missing Credentials",
-                "API_ID or API_HASH missing in .env file!\nUse .env.example to create one."
+                "Error: API Keys not found. Please contact the administrator."
             ))
             return
 
