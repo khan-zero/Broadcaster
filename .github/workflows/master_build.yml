@@ -1,4 +1,4 @@
-name: Production Build
+name: MASTER_WINDOWS_BUILD
 
 on:
   push:
@@ -21,7 +21,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt pyinstaller
 
-    - name: Inject Secrets into .env
+    - name: Inject Credentials
+      shell: pwsh
       run: |
         echo "TG_API_ID=${{ secrets.TG_API_ID }}" > .env
         echo "TG_API_HASH=${{ secrets.TG_API_HASH }}" >> .env
@@ -30,8 +31,8 @@ jobs:
       run: |
         pyinstaller --onefile --noconsole --icon="app_logo_image.png" --add-data "app_logo_image.png;." --add-data ".env;." --collect-all customtkinter main.py
 
-    - name: Upload Artifact
+    - name: Upload Finished EXE
       uses: actions/upload-artifact@v4
       with:
-        name: TelegramBroadcaster-Windows
+        name: Broadcaster-Final-Version
         path: dist/main.exe
