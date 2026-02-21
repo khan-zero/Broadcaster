@@ -21,9 +21,14 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt pyinstaller
 
+    - name: Inject Secrets into .env
+      run: |
+        echo "TG_API_ID=${{ secrets.TG_API_ID }}" > .env
+        echo "TG_API_HASH=${{ secrets.TG_API_HASH }}" >> .env
+
     - name: Build EXE
       run: |
-        pyinstaller --onefile --noconsole --icon="app_logo_image.png" --add-data "app_logo_image.png;." --collect-all customtkinter main.py
+        pyinstaller --onefile --noconsole --icon="app_logo_image.png" --add-data "app_logo_image.png;." --add-data ".env;." --collect-all customtkinter main.py
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
