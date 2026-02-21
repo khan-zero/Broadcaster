@@ -1,0 +1,32 @@
+name: Production Build
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt pyinstaller
+
+    - name: Build EXE
+      run: |
+        pyinstaller --onefile --noconsole --icon="app_logo_image.png" --add-data "app_logo_image.png;." --collect-all customtkinter main.py
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TelegramBroadcaster-Windows
+        path: dist/main.exe
