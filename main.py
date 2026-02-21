@@ -6,6 +6,7 @@ import threading
 import asyncio
 import random
 import re
+import tkinter as tk
 import tkinter.messagebox
 import webbrowser
 import logging
@@ -275,6 +276,104 @@ def make_entry(parent, placeholder: str = "", width: int = 240, show: str = "") 
     )
 
 
+# ── Custom Widgets ────────────────────────────────────────────────────────────
+class ModernAlert(ctk.CTkToplevel):
+    def __init__(self, parent, title, message, style="info", callback=None):
+        super().__init__(parent)
+        self.title("")
+        self.geometry("420x220")
+        self.resizable(False, False)
+        self.configure(fg_color=WIN11["bg_surface"])
+        self.attributes('-topmost', True)
+        self.after(10, self._center_window)
+        
+        self.callback = callback
+        
+        # Icon mapping
+        icons = {"info": ("ℹ", WIN11["accent"]), "warning": ("⚠", WIN11["warning"]), "error": ("❌", WIN11["danger"]), "question": ("❓", WIN11["accent"])}
+        icon_char, icon_color = icons.get(style, icons["info"])
+        
+        main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=24, pady=24)
+        
+        header = ctk.CTkFrame(main_frame, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 10))
+        
+        ctk.CTkLabel(header, text=icon_char, font=(FONT_FAMILY, 32), text_color=icon_color).pack(side="left")
+        make_heading(header, title, 16).pack(side="left", padx=12)
+        
+        ctk.CTkLabel(main_frame, text=message, font=(FONT_FAMILY, 12), text_color=WIN11["text_secondary"], 
+                     wraplength=360, justify="left").pack(fill="x", pady=(0, 20))
+        
+        btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        btn_frame.pack(fill="x", side="bottom")
+        
+        if style == "question":
+            make_button(btn_frame, "Yes", command=lambda: self._close(True), style="accent", width=100).pack(side="right")
+            make_button(btn_frame, "No", command=lambda: self._close(False), style="neutral", width=100).pack(side="right", padx=10)
+        else:
+            make_button(btn_frame, "OK", command=lambda: self._close(True), style="accent", width=100).pack(side="right")
+
+    def _center_window(self):
+        self.update_idletasks()
+        width = self.winfo_width()
+        height = self.winfo_height()
+        x = (self.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.winfo_screenheight() // 2) - (height // 2)
+        self.geometry(f'+{x}+{y}')
+
+    def _close(self, result):
+        self.destroy()
+        if self.callback:
+            self.callback(result)
+
+class LoadingWindow(ctk.CTkToplevel):
+    def __init__(self, parent, message="Connecting to Telegram..."):
+        super().__init__(parent)
+        self.overrideredirect(True)
+        self.geometry("380x180")
+        self.configure(fg_color=WIN11["bg_surface"])
+        self.attributes('-topmost', True)
+        self._center_window()
+        
+        # Border
+        border = ctk.CTkFrame(self, fg_color=WIN11["border"], corner_radius=12)
+        border.pack(fill="both", expand=True, padx=1, pady=1)
+        inner = ctk.CTkFrame(border, fg_color=WIN11["bg_surface"], corner_radius=11)
+        inner.pack(fill="both", expand=True, padx=0, pady=0)
+
+        # Content
+        self.logo_label = ctk.CTkLabel(inner, text="✈", font=(FONT_FAMILY, 40), text_color=WIN11["accent"])
+        self.logo_label.pack(pady=(25, 5))
+        
+        self.msg_label = ctk.CTkLabel(inner, text=message, font=(FONT_FAMILY, 13), text_color=WIN11["text_primary"])
+        self.msg_label.pack(pady=5)
+        
+        self.progress = ctk.CTkProgressBar(inner, width=280, height=4, indeterminate_speed=1.5,
+                                           fg_color=WIN11["bg_input"], progress_color=WIN11["accent"])
+        self.progress.pack(pady=(15, 0))
+        self.progress.start()
+        
+        # Setup real logo if available
+        self.after(100, self._load_logo)
+
+    def _load_logo(self):
+        try:
+            from PIL import Image
+            if os.path.exists("app_logo_image.png"):
+                img = ctk.CTkImage(light_image=Image.open("app_logo_image.png"),
+                                  dark_image=Image.open("app_logo_image.png"),
+                                  size=(60, 60))
+                self.logo_label.configure(image=img, text="")
+        except Exception:
+            pass
+
+    def _center_window(self):
+        self.update_idletasks()
+        x = (self.winfo_screenwidth() // 2) - (190)
+        y = (self.winfo_screenheight() // 2) - (90)
+        self.geometry(f'380x180+{x}+{y}')
+
 # ── Main Application ──────────────────────────────────────────────────────────
 class App(ctk.CTk):
     def __init__(self):
@@ -284,14 +383,17 @@ class App(ctk.CTk):
         self.geometry("1160x720")
         self.minsize(900, 600)
         self.configure(fg_color=WIN11["bg_base"])
+        
+        # Set App Icon
+        self._set_app_icon()
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Backend
+        # Backend (Fixing logging accessibility)
         self.loop_thread = AsyncLoopThread()
         self.loop_thread.start()
-        self.manager = TelegramManager(self.loop_thread, self.log_message)
+        self.manager = TelegramManager(self.loop_thread, self._safe_log)
 
         # State
         self.groups = []
@@ -308,37 +410,50 @@ class App(ctk.CTk):
         self._active_nav = None
 
         if not API_ID or not API_HASH:
-            self.after(500, lambda: tkinter.messagebox.showerror(
+            self.after(500, lambda: self.show_error(
                 "Missing Credentials",
                 "Error: API Keys not found. Please contact the administrator."
             ))
             return
 
-        self.create_login_ui()
+        # Start with a loading window
+        self.withdraw()
+        self.loading = LoadingWindow(self)
         self.check_initial_login()
+
+    def _set_app_icon(self):
+        try:
+            if os.path.exists("app_logo_image.png"):
+                from PIL import Image, ImageTk
+                img = Image.open("app_logo_image.png")
+                # Resize to a standard icon size to avoid X11 BadLength errors on Linux
+                img = img.resize((64, 64), Image.LANCZOS)
+                self.iconphoto(False, ImageTk.PhotoImage(img))
+        except Exception as e:
+            print(f"Failed to set icon: {e}")
+
+    def _safe_log(self, message):
+        # Thread-safe logging bridge
+        def _exec():
+            if self.winfo_exists():
+                self.log_message(message)
+        self.after(0, _exec)
+
+    # ── Custom Messageboxes ───────────────────────────────────────────────────
+    def show_error(self, title, message):
+        ModernAlert(self, title, message, style="error")
+
+    def show_info(self, title, message):
+        ModernAlert(self, title, message, style="info")
+
+    def ask_yes_no(self, title, message, callback):
+        ModernAlert(self, title, message, style="question", callback=callback)
 
     # ── Exception handler ─────────────────────────────────────────────────────
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
         logging.error(f"Unhandled Exception: {err_msg}")
-
-        win = ctk.CTkToplevel(self)
-        win.title("Unexpected Error")
-        win.geometry("640x420")
-        win.configure(fg_color=WIN11["bg_surface"])
-        win.attributes('-topmost', True)
-
-        make_heading(win, "⚠  An unexpected error occurred", 15).pack(pady=(24, 8), padx=24, anchor="w")
-        make_section_label(win, "Details are saved to error_log.txt").pack(padx=24, anchor="w")
-
-        tb = ctk.CTkTextbox(win, font=(FONT_FAMILY, 11), fg_color=WIN11["bg_input"],
-                            border_width=0, corner_radius=6, text_color=WIN11["text_secondary"])
-        tb.pack(fill="both", expand=True, padx=24, pady=16)
-        tb.insert("1.0", err_msg)
-        tb.configure(state="disabled")
-
-        make_button(win, "Close & Restart", command=lambda: self.logout(force=True),
-                    style="danger", width=160).pack(pady=(0, 20))
+        self.show_error("Unexpected Error", "Details are saved to error_log.txt")
 
     # ── Logger ────────────────────────────────────────────────────────────────
     def log_message(self, message):
@@ -501,14 +616,23 @@ class App(ctk.CTk):
         if not auth_future.done():
             self.after(500, self._process_auth_result, auth_future)
             return
+        
+        # Close loading window
+        if hasattr(self, 'loading') and self.loading:
+            self.loading.destroy()
+            self.loading = None
+        self.deiconify()
+
         try:
             if auth_future.result():
                 self.show_main_ui()
                 self.log_message("Logged in automatically.")
                 self.refresh_groups()
             else:
+                self.create_login_ui()
                 self.log_message("Please log in.")
         except Exception as e:
+            self.create_login_ui()
             self.log_message(f"Auth check failed: {e}")
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -530,9 +654,12 @@ class App(ctk.CTk):
         self.login_frame = card
 
         # App icon placeholder + title
-        icon_lbl = ctk.CTkLabel(card, text="✈", font=(FONT_FAMILY, 40),
+        self.login_icon_lbl = ctk.CTkLabel(card, text="✈", font=(FONT_FAMILY, 40),
                                 text_color=WIN11["accent"])
-        icon_lbl.pack(pady=(32, 0))
+        self.login_icon_lbl.pack(pady=(32, 0))
+        
+        # Load real logo for login
+        self._load_image_to_label(self.login_icon_lbl, (80, 80))
 
         make_heading(card, "Telegram Broadcaster Pro", 18).pack(pady=(6, 2))
         make_section_label(card, "Sign in to your Telegram account").pack(pady=(0, 24))
@@ -618,11 +745,16 @@ class App(ctk.CTk):
             if future.done():
                 future.result()
                 self.login_log_lbl.configure(text="✓  Logged in!", text_color=WIN11["success"])
-                self.login_frame.destroy()
-                if hasattr(self, 'login_bg'):
-                    self.login_bg.destroy()
-                self.show_main_ui()
-                self.refresh_groups()
+                
+                def _proceed():
+                    if hasattr(self, 'login_frame') and self.login_frame:
+                        self.login_frame.destroy()
+                    if hasattr(self, 'login_bg') and self.login_bg:
+                        self.login_bg.destroy()
+                    self.show_main_ui()
+                    self.refresh_groups()
+                
+                self.after(1000, _proceed)
             else:
                 self.after(100, self._wait_for_login, future)
         except errors.SessionPasswordNeededError:
@@ -650,7 +782,11 @@ class App(ctk.CTk):
         # Branding
         brand = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         brand.pack(fill="x", padx=16, pady=(28, 20))
-        ctk.CTkLabel(brand, text="✈", font=(FONT_FAMILY, 24), text_color=WIN11["accent"]).pack(side="left")
+        
+        self.side_logo = ctk.CTkLabel(brand, text="✈", font=(FONT_FAMILY, 24), text_color=WIN11["accent"])
+        self.side_logo.pack(side="left")
+        self._load_image_to_label(self.side_logo, (24, 24))
+        
         ctk.CTkLabel(brand, text="  Broadcaster", font=(FONT_FAMILY, 15, "bold"),
                      text_color=WIN11["text_primary"]).pack(side="left")
 
@@ -753,11 +889,24 @@ class App(ctk.CTk):
             text_color=WIN11["text_primary"],
             wrap="word",
         )
-        self.message_box.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
+        self.message_box.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 10))
+        self.message_box.bind("<KeyRelease>", self._on_message_modified)
+
+        # Message Actions Row
+        msg_actions = ctk.CTkFrame(msg_card, fg_color="transparent")
+        msg_actions.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 16))
+        
+        self.save_msg_btn = make_button(msg_actions, "💾  Save as Template",
+                    command=self.save_draft, style="accent", width=170, height=32)
+        self.save_msg_btn.pack(side="left", padx=(0, 10))
+        
+        make_button(msg_actions, "Clear Box",
+                    command=self.clear_message_box,
+                    style="neutral", width=100, height=32).pack(side="left")
 
         # ── Settings card ─────────────────────────────────────────────────────
         ctrl_card = make_card(left)
-        ctrl_card.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        ctrl_card.grid(row=3, column=0, sticky="ew", pady=(0, 12))
 
         make_heading(ctrl_card, "Broadcast Settings", 13).grid(
             row=0, column=0, columnspan=4, sticky="w", padx=16, pady=(14, 10))
@@ -801,7 +950,7 @@ class App(ctk.CTk):
             fg_color=WIN11["bg_input"],
             progress_color=WIN11["accent"],
         )
-        self.progress_bar.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        self.progress_bar.grid(row=4, column=0, sticky="ew", pady=(0, 10))
         self.progress_bar.set(0)
 
         self.start_btn = make_button(
@@ -810,7 +959,7 @@ class App(ctk.CTk):
             style="accent", height=44, width=0,
         )
         self.start_btn.configure(font=(FONT_FAMILY, 14, "bold"))
-        self.start_btn.grid(row=4, column=0, sticky="ew")
+        self.start_btn.grid(row=5, column=0, sticky="ew")
 
         # ── Right column – Groups ──────────────────────────────────────────────
         right = make_card(parent)
@@ -870,20 +1019,6 @@ class App(ctk.CTk):
             scrollbar_button_hover_color=WIN11["accent"],
         )
         self.drafts_scroll.grid(row=1, column=0, sticky="nsew", padx=24, pady=(12, 0))
-
-        action_bar = ctk.CTkFrame(parent, fg_color=WIN11["bg_surface"],
-                                  corner_radius=0, border_width=0)
-        action_bar.grid(row=2, column=0, sticky="ew", padx=0, pady=0)
-        ctk.CTkFrame(action_bar, height=1, fg_color=WIN11["border"]).pack(fill="x")
-
-        btn_inner = ctk.CTkFrame(action_bar, fg_color="transparent")
-        btn_inner.pack(pady=14, padx=24, anchor="w")
-
-        make_button(btn_inner, "💾  Save Current Message",
-                    command=self.save_draft, style="accent", width=200, height=36).pack(side="left", padx=(0, 10))
-        make_button(btn_inner, "Clear Box",
-                    command=lambda: self.message_box.delete("1.0", "end"),
-                    style="neutral", width=100, height=36).pack(side="left")
 
         self.update_drafts_list()
 
@@ -947,9 +1082,35 @@ class App(ctk.CTk):
         self.message_box.delete("1.0", "end")
         self.message_box.insert("1.0", text)
         self.current_edit_index = index
+        self._set_save_button_state("accent") # Reset to normal
         self._switch_tab("broadcast")
         if index is not None:
             self.log_message(f"Loaded draft #{index + 1} for editing.")
+
+    def clear_message_box(self):
+        self.message_box.delete("1.0", "end")
+        self.current_edit_index = None
+        self._set_save_button_state("accent")
+
+    def _on_message_modified(self, event=None):
+        if self.current_edit_index is not None:
+            # We are editing a draft, change button color to show unsaved changes
+            self._set_save_button_state("success")
+        else:
+            # New message
+            self._set_save_button_state("accent")
+
+    def _set_save_button_state(self, style):
+        if not hasattr(self, 'save_msg_btn'): return
+        
+        if style == "success":
+            self.save_msg_btn.configure(fg_color=WIN11["success"], 
+                                      hover_color=WIN11["success_hover"],
+                                      text="💾  Save Changes")
+        else:
+            self.save_msg_btn.configure(fg_color=WIN11["accent"], 
+                                      hover_color=WIN11["accent_hover"],
+                                      text="💾  Save as Template")
 
     # ─────────────────────────────────────────────────────────────────────────
     # LOGS TAB
@@ -1158,7 +1319,7 @@ class App(ctk.CTk):
                     data = response.json()
                     version = data.get("tag_name", "Unknown")
                     self.log_message(f"Latest version: {version}")
-                    tkinter.messagebox.showinfo("Update Check", f"Latest GitHub release: {version}")
+                    self.show_info("Update Check", f"Latest GitHub release: {version}")
                 else:
                     self.log_message("Update check failed: repo not found or private.")
             except Exception as e:
@@ -1169,7 +1330,8 @@ class App(ctk.CTk):
         webbrowser.open("https://github.com/khan-zero/Broadcaster/issues")
 
     def logout(self, force=False):
-        if force or tkinter.messagebox.askyesno("Sign Out", "Are you sure you want to sign out?"):
+        def _exec_logout(confirmed):
+            if not confirmed: return
             try:
                 if self.manager.client and self.manager.phone:
                     try:
@@ -1187,6 +1349,11 @@ class App(ctk.CTk):
                 os.execv(sys.executable, [sys.executable] + sys.argv)
             except Exception:
                 self.destroy()
+
+        if force:
+            _exec_logout(True)
+        else:
+            self.ask_yes_no("Sign Out", "Are you sure you want to sign out?", _exec_logout)
 
     def save_groups_local(self, groups):
         try:
@@ -1236,6 +1403,17 @@ class App(ctk.CTk):
         except Exception as e:
             print(f"Failed to save settings: {e}")
 
+    def _load_image_to_label(self, label, size):
+        try:
+            from PIL import Image
+            if os.path.exists("app_logo_image.png"):
+                img = ctk.CTkImage(light_image=Image.open("app_logo_image.png"),
+                                  dark_image=Image.open("app_logo_image.png"),
+                                  size=size)
+                label.configure(image=img, text="")
+        except Exception:
+            pass
+
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
@@ -1248,7 +1426,6 @@ if __name__ == "__main__":
         err_msg = traceback.format_exc()
         logging.error(f"Critical Startup Error: {err_msg}")
 
-        import tkinter as tk
         root = tk.Tk()
         root.withdraw()
         tkinter.messagebox.showerror(

@@ -3,3 +3,9 @@ dist/
 build/
 *.spec
 .env
+*.session
+*.session-journal
+api_keys.txt
+error_log.txt
+sessions/
+*.json
