@@ -29,20 +29,35 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 # --- Load Environment ---
-env_path = os.path.join(sys._MEIPASS, '.env') if hasattr(sys, '_MEIPASS') else '.env'
+if hasattr(sys, '_MEIPASS'):
+    base_path = sys._MEIPASS
+else:
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+env_path = os.path.join(base_path, '.env')
 load_dotenv(env_path)
 
-# --- Configuration ---
-API_ID = os.getenv("TG_API_ID")
-API_HASH = os.getenv("TG_API_HASH")
+# --- Configuration (CLEAN VERSION) ---
 SESSIONS_DIR = "sessions"
 GROUPS_FILE = "groups.json"
 DRAFTS_FILE = "drafts.json"
 BLACKLIST_FILE = "blacklist.json"
 SETTINGS_FILE = "settings.json"
 
-if API_ID:
-    API_ID = int(API_ID)
+# API Keys with safe conversion
+API_ID = os.getenv("TG_API_ID")
+API_HASH = os.getenv("TG_API_HASH")
+
+try:
+    if API_ID:
+        API_ID = int(API_ID)
+except ValueError:
+    logging.error(f"Invalid TG_API_ID found: {API_ID}")
+    API_ID = None
+
+# Ensure sessions directory exists
+if not os.path.exists(SESSIONS_DIR):
+    os.makedirs(SESSIONS_DIR)
 
 # ── Windows 11 Design Tokens ──────────────────────────────────────────────────
 WIN11 = {
