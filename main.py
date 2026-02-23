@@ -21,43 +21,47 @@ from telethon import TelegramClient, events, errors
 from telethon.tl.types import Dialog, InputPeerChannel, InputPeerChat, InputPeerUser, ChannelFull, ChatFull
 from telethon.tl.functions.channels import GetFullChannelRequest
 
-# --- Logging Setup ---
-ERROR_LOG_FILE = "error_log.txt"
+# --- Configuration ---
+if hasattr(sys, '_MEIPASS'):
+    bundle_dir = sys._MEIPASS
+else:
+    bundle_dir = os.path.dirname(os.path.abspath(__file__))
+
+data_dir = os.getcwd()
+
+# Load Environment from bundle
+env_path = os.path.join(bundle_dir, '.env')
+load_dotenv(env_path)
+
+# Persistence paths
+ERROR_LOG_FILE = os.path.join(data_dir, "error_log.txt")
+SESSIONS_DIR = os.path.join(data_dir, "sessions")
+GROUPS_FILE = os.path.join(data_dir, "groups.json")
+DRAFTS_FILE = os.path.join(data_dir, "drafts.json")
+BLACKLIST_FILE = os.path.join(data_dir, "blacklist.json")
+SETTINGS_FILE = os.path.join(data_dir, "settings.json")
+APP_LOGO_PATH = os.path.join(bundle_dir, "app_logo_image.png")
+
+# Logging Setup
 logging.basicConfig(
     filename=ERROR_LOG_FILE,
     level=logging.ERROR,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-# --- Load Environment ---
-if hasattr(sys, '_MEIPASS'):
-    base_path = sys._MEIPASS
-else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
-
-env_path = os.path.join(base_path, '.env')
-load_dotenv(env_path)
-
-# --- Configuration (CLEAN VERSION) ---
-SESSIONS_DIR = "sessions"
-GROUPS_FILE = "groups.json"
-DRAFTS_FILE = "drafts.json"
-BLACKLIST_FILE = "blacklist.json"
-SETTINGS_FILE = "settings.json"
 
 # API Keys with safe conversion
-API_ID = os.getenv("TG_API_ID")
-API_HASH = os.getenv("TG_API_HASH")
-
 try:
-    if API_ID:
-        API_ID = int(API_ID)
-except ValueError:
-    logging.error(f"Invalid TG_API_ID found: {API_ID}")
+    API_ID_RAW = os.getenv("TG_API_ID")
+    API_ID = int(API_ID_RAW) if API_ID_RAW else None
+except (ValueError, TypeError):
+    logging.error(f"Invalid TG_API_ID found: {os.getenv('TG_API_ID')}")
     API_ID = None
+
+API_HASH = os.getenv("TG_API_HASH")
 
 # Ensure sessions directory exists
 if not os.path.exists(SESSIONS_DIR):
-    os.makedirs(SESSIONS_DIR)
+    os.makedirs(SESSIONS_DIR, exist_ok=True)
 
 # ── Windows 11 Design Tokens ──────────────────────────────────────────────────
 WIN11 = {
@@ -375,9 +379,9 @@ class LoadingWindow(ctk.CTkToplevel):
     def _load_logo(self):
         try:
             from PIL import Image
-            if os.path.exists("app_logo_image.png"):
-                img = ctk.CTkImage(light_image=Image.open("app_logo_image.png"),
-                                  dark_image=Image.open("app_logo_image.png"),
+            if os.path.exists(APP_LOGO_PATH):
+                img = ctk.CTkImage(light_image=Image.open(APP_LOGO_PATH),
+                                  dark_image=Image.open(APP_LOGO_PATH),
                                   size=(60, 60))
                 self.logo_label.configure(image=img, text="")
         except Exception:
@@ -438,9 +442,9 @@ class App(ctk.CTk):
 
     def _set_app_icon(self):
         try:
-            if os.path.exists("app_logo_image.png"):
+            if os.path.exists(APP_LOGO_PATH):
                 from PIL import Image, ImageTk
-                img = Image.open("app_logo_image.png")
+                img = Image.open(APP_LOGO_PATH)
                 # Resize to a standard icon size to avoid X11 BadLength errors on Linux
                 img = img.resize((64, 64), Image.LANCZOS)
                 self.iconphoto(False, ImageTk.PhotoImage(img))
@@ -1421,9 +1425,9 @@ class App(ctk.CTk):
     def _load_image_to_label(self, label, size):
         try:
             from PIL import Image
-            if os.path.exists("app_logo_image.png"):
-                img = ctk.CTkImage(light_image=Image.open("app_logo_image.png"),
-                                  dark_image=Image.open("app_logo_image.png"),
+            if os.path.exists(APP_LOGO_PATH):
+                img = ctk.CTkImage(light_image=Image.open(APP_LOGO_PATH),
+                                  dark_image=Image.open(APP_LOGO_PATH),
                                   size=size)
                 label.configure(image=img, text="")
         except Exception:
