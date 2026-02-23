@@ -180,8 +180,32 @@ class TelegramManager:
         return future
 
     def send_code_request(self, phone):
-        self.phone = phone
-        return self.loop_thread.run_coroutine(self.client.send_code_request(phone))
+        # Force international format: + followed by digits only
+        clean_phone = '+' + re.sub(r'\D', '', phone)
+        self.phone = clean_phone
+        return self.loop_thread.run_coroutine(self._send_code_wrapper(clean_phone))
+
+    async def _send_code_wrapper(self, phone):
+        try:
+            print(f"DEBUG: Requesting code for {phone}...")
+            sent_code = await self.client.send_code_request(phone)
+            
+            # Identify delivery method
+            m_type = type(sent_code.type).__name__.replace('SentCodeType', '')
+            print(f"LOGIN: Code sent successfully via [{m_type}]")
+            return sent_code
+            
+        except errors.PhoneNumberInvalidError:
+            logging.error(f"Invalid phone number: {phone}")
+            print(f"ERROR: The phone number {phone} is not valid.")
+            raise
+        except errors.FloodWaitError as e:
+            logging.error(f"FloodWait: {e.seconds}s")
+            print(f"ERROR: Telegram is rate-limiting you. Wait {e.seconds} seconds.")
+            raise
+        except Exception as e:
+            logging.error(f"SendCode Error: {e}")
+            raise
 
     def sign_in(self, code, password=None):
         return self.loop_thread.run_coroutine(self._sign_in_wrapper(code, password))
@@ -194,6 +218,19 @@ class TelegramManager:
                 await self.client.sign_in(password=password)
             else:
                 raise
+        except Exception as e:
+            # Session Cleanup: Remove conflicted session files on failure
+            logging.error(f"Sign-in failed for {self.phone}: {e}")
+            session_file = os.path.join(SESSIONS_DIR, f"{self.phone}.session")
+            
+            try:
+                await self.client.disconnect()
+                if os.path.exists(session_file):
+                    os.remove(session_file)
+                    print(f"CLEANUP: Deleted ghost session {session_file} after failure.")
+            except:
+                pass
+            raise
 
     def get_dialogs(self):
         return self.loop_thread.run_coroutine(self._get_groups())
