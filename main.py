@@ -53,15 +53,29 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# API Keys with safe conversion
+# API Keys with safe conversion and Settings Fallback
+API_ID = os.getenv("TG_API_ID")
+API_HASH = os.getenv("TG_API_HASH")
+
+# Try loading from settings if environment variables are missing
+if not API_ID or not API_HASH:
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r") as f:
+                _s = json.load(f)
+                API_ID = API_ID or _s.get("api_id")
+                API_HASH = API_HASH or _s.get("api_hash")
+        except Exception:
+            pass
+
 try:
-    API_ID_RAW = os.getenv("TG_API_ID")
-    API_ID = int(API_ID_RAW) if API_ID_RAW else None
+    if API_ID:
+        API_ID = int(API_ID)
 except (ValueError, TypeError):
-    logging.error(f"Invalid TG_API_ID found: {os.getenv('TG_API_ID')}")
+    logging.error(f"Invalid TG_API_ID found: {API_ID}")
     API_ID = None
 
-API_HASH = os.getenv("TG_API_HASH")
+print(f"API ID: {API_ID}")
 
 # Ensure sessions directory exists
 if not os.path.exists(SESSIONS_DIR):
@@ -432,17 +446,45 @@ class App(ctk.CTk):
         self.current_edit_index = None
         self._active_nav = None
 
+        # Verify or Prompt for API Credentials
+        global API_ID, API_HASH
         if not API_ID or not API_HASH:
-            self.after(500, lambda: self.show_error(
-                "Missing Credentials",
-                "Error: API Keys not found. Please contact the administrator."
-            ))
-            return
+            self._request_api_credentials()
+            if not API_ID or not API_HASH:
+                self.after(500, lambda: self.show_error(
+                    "Missing Credentials",
+                    "Error: API Keys are required to run this application."
+                ))
+                return
 
         # Start with a loading window
         self.withdraw()
         self.loading = LoadingWindow(self)
         self.check_initial_login()
+
+    def _request_api_credentials(self):
+        """Prompt user for API ID and Hash if missing."""
+        global API_ID, API_HASH
+        
+        if not API_ID:
+            dialog = ctk.CTkInputDialog(text="Enter your Telegram API ID:", title="API Setup")
+            val = dialog.get_input()
+            if val:
+                try:
+                    API_ID = int(val)
+                    self.settings["api_id"] = API_ID
+                except ValueError:
+                    self.show_error("Invalid ID", "API ID must be a number.")
+        
+        if not API_HASH:
+            dialog = ctk.CTkInputDialog(text="Enter your Telegram API Hash:", title="API Setup")
+            val = dialog.get_input()
+            if val:
+                API_HASH = val
+                self.settings["api_hash"] = API_HASH
+        
+        if API_ID and API_HASH:
+            self.save_settings()
 
     def _set_app_icon(self):
         try:
