@@ -21,28 +21,32 @@ from telethon import TelegramClient, events, errors
 from telethon.tl.types import Dialog, InputPeerChannel, InputPeerChat, InputPeerUser, ChannelFull, ChatFull
 from telethon.tl.functions.channels import GetFullChannelRequest
 
-# --- Configuration ---
+# --- Configuration & Path Logic ---
 if hasattr(sys, '_MEIPASS'):
+    # Internal bundle directory (Logo, .env)
     bundle_dir = sys._MEIPASS
+    # Persistent data directory (Executable location)
+    data_dir = os.path.dirname(sys.executable)
 else:
     bundle_dir = os.path.dirname(os.path.abspath(__file__))
-
-data_dir = os.getcwd()
+    data_dir = bundle_dir
 
 # Load Environment from bundle
 env_path = os.path.join(bundle_dir, '.env')
 load_dotenv(env_path)
 
-# Persistence paths
-ERROR_LOG_FILE = os.path.join(data_dir, "error_log.txt")
-SESSIONS_DIR = os.path.join(data_dir, "sessions")
-GROUPS_FILE = os.path.join(data_dir, "groups.json")
-DRAFTS_FILE = os.path.join(data_dir, "drafts.json")
-BLACKLIST_FILE = os.path.join(data_dir, "blacklist.json")
-SETTINGS_FILE = os.path.join(data_dir, "settings.json")
+# Assets (Read-only, in bundle)
 APP_LOGO_PATH = os.path.join(bundle_dir, "app_logo_image.png")
 
-# Logging Setup
+# Persistence (Writable, in data_dir)
+ERROR_LOG_FILE = os.path.abspath(os.path.join(data_dir, "error_log.txt"))
+SESSIONS_DIR   = os.path.abspath(os.path.join(data_dir, "sessions"))
+GROUPS_FILE    = os.path.abspath(os.path.join(data_dir, "groups.json"))
+DRAFTS_FILE    = os.path.abspath(os.path.join(data_dir, "drafts.json"))
+BLACKLIST_FILE = os.path.abspath(os.path.join(data_dir, "blacklist.json"))
+SETTINGS_FILE  = os.path.abspath(os.path.join(data_dir, "settings.json"))
+
+# Logging Setup (Must be AFTER path definitions)
 logging.basicConfig(
     filename=ERROR_LOG_FILE,
     level=logging.ERROR,
