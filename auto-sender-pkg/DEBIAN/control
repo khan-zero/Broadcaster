@@ -1,0 +1,7 @@
+Package: auto-sender
+Version: 1.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Saidabbosxon <mr.khan.r35@gmail.com>
+Description: Auto Sender GUI application built with CustomTkinter.
